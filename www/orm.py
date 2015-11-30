@@ -1,14 +1,12 @@
 # orm.py
-# -*- coding: utf-8 -*-
-
-__author__ = 'czqsole'
-
+# -*- coding:utf-8 -*-
 import asyncio, logging
-
 import aiomysql
 
+
 def log(sql, args=()):
-    logging.info('SQL: %s' % sql)
+    logging.info('SQL : %s' % sql)
+
 
 @asyncio.coroutine
 def create_pool(loop, **kw):
@@ -19,13 +17,14 @@ def create_pool(loop, **kw):
         port=kw.get('port', 3306),
         user=kw['user'],
         password=kw['password'],
-        db=kw['db'],
+        db=kw['database'],
         charset=kw.get('charset', 'utf8'),
         autocommit=kw.get('autocommit', True),
         maxsize=kw.get('maxsize', 10),
         minsize=kw.get('minsize', 1),
         loop=loop
     )
+
 
 @asyncio.coroutine
 def select(sql, args, size=None):
@@ -42,33 +41,31 @@ def select(sql, args, size=None):
         logging.info('rows returned: %s' % len(rs))
         return rs
 
+
 @asyncio.coroutine
 def execute(sql, args, autocommit=True):
     log(sql)
-    with (yield from __pool) as conn:
+    with(yield from __pool) as conn:
         if not autocommit:
             yield from conn.begin()
         try:
             cur = yield from conn.cursor()
-            yield from cur.execute(sql.replace('?', '%s'), args)
+            yield from cur.execute(sql.replace('?', "%s"), args)
             affected = cur.rowcount
             yield from cur.close()
-            if not autocommit:
-                yield from conn.commit()
         except BaseException as e:
-            if not autocommit:
-                yield from conn.rollback()
             raise
         return affected
+
 
 def create_args_string(num):
     L = []
     for n in range(num):
         L.append('?')
-    return ', '.join(L)
+    return ','.join(L)
+
 
 class Field(object):
-
     def __init__(self, name, column_type, primary_key, default):
         self.name = name
         self.column_type = column_type
@@ -76,32 +73,33 @@ class Field(object):
         self.default = default
 
     def __str__(self):
-        return '<%s, %s:%s>' % (self.__class__.__name__, self.column_type, self.name)
+        return '(%s, %s : %s)' % (self.__class__.__name__, self.column_type, self.name)
+
 
 class StringField(Field):
-
     def __init__(self, name=None, primary_key=False, default=None, ddl='varchar(100)'):
         super().__init__(name, ddl, primary_key, default)
 
-class BooleanField(Field):
 
+class BooleanField(Field):
     def __init__(self, name=None, default=False):
         super().__init__(name, 'boolean', False, default)
 
-class IntegerField(Field):
 
+class IntegerFeild(Field):
     def __init__(self, name=None, primary_key=False, default=0):
         super().__init__(name, 'bigint', primary_key, default)
 
-class FloatField(Field):
 
-    def __init__(self, name=None, primary_key=False, default=0.0):
+class FloatField(Field):
+    def __init__(self, name=None, primary_key=False, default=0):
         super().__init__(name, 'real', primary_key, default)
 
-class TextField(Field):
 
-    def __init__(self, name=None, default=None):
+class TextField(Field):
+    def __init__(self, name=None, default=0):
         super().__init__(name, 'text', False, default)
+
 
 class ModelMetaclass(type):
 
@@ -139,8 +137,8 @@ class ModelMetaclass(type):
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
 
-class Model(dict, metaclass=ModelMetaclass):
 
+class Model(dict, metaclass=ModelMetaclass):
     def __init__(self, **kw):
         super(Model, self).__init__(**kw)
 
@@ -169,9 +167,9 @@ class Model(dict, metaclass=ModelMetaclass):
     @classmethod
     @asyncio.coroutine
     def findAll(cls, where=None, args=None, **kw):
-        ' find objects by where clause. '
+        'find objects by where clause. '
         sql = [cls.__select__]
-        if where:
+        if where :
             sql.append('where')
             sql.append(where)
         if args is None:
@@ -180,7 +178,8 @@ class Model(dict, metaclass=ModelMetaclass):
         if orderBy:
             sql.append('order by')
             sql.append(orderBy)
-        limit = kw.get('limit', None)
+        limit = kw.get('limit', None) # Mysql语句中，limit后面接受一个或者两个参数。一个参数：表示返回记录行的最大数
+                                      # 两个参数：一个表示返回记录行的偏移量，第二个表示返回记录行的最大数
         if limit is not None:
             sql.append('limit')
             if isinstance(limit, int):
@@ -191,13 +190,13 @@ class Model(dict, metaclass=ModelMetaclass):
                 args.extend(limit)
             else:
                 raise ValueError('Invalid limit value: %s' % str(limit))
-        rs = yield from select(' '.join(sql), args)
+        rs = yield from    select(' '.join(sql),args)
         return [cls(**r) for r in rs]
 
     @classmethod
     @asyncio.coroutine
     def findNumber(cls, selectField, where=None, args=None):
-        ' find number by select and where. '
+        'find objects by select and where. '
         sql = ['select %s _num_ from `%s`' % (selectField, cls.__table__)]
         if where:
             sql.append('where')
@@ -210,11 +209,11 @@ class Model(dict, metaclass=ModelMetaclass):
     @classmethod
     @asyncio.coroutine
     def find(cls, pk):
-        ' find object by primary key. '
-        rs = yield from select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__), [pk], 1)
+        rs = yield from select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__),[pk], 1)
         if len(rs) == 0:
             return None
-        return cls(**rs[0])
+        else :
+            return cls(**rs[0])
 
     @asyncio.coroutine
     def save(self):
@@ -222,7 +221,7 @@ class Model(dict, metaclass=ModelMetaclass):
         args.append(self.getValueOrDefault(self.__primary_key__))
         rows = yield from execute(self.__insert__, args)
         if rows != 1:
-            logging.warn('failed to insert record: affected rows: %s' % rows)
+            logging.warning('failed to insert record: affected rows: %s' % rows)
 
     @asyncio.coroutine
     def update(self):
@@ -237,4 +236,4 @@ class Model(dict, metaclass=ModelMetaclass):
         args = [self.getValue(self.__primary_key__)]
         rows = yield from execute(self.__delete__, args)
         if rows != 1:
-            logging.warn('failed to remove by primary key: affected rows: %s' % rows)
+            logging.warning('failed to remove by primary key: affected rows: %s' % rows)
